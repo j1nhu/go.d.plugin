@@ -9,7 +9,7 @@ import (
 
 var chartTemplate = module.Chart{
 	ID:    "random_%d",
-	Title: "A Random Number",
+	Title: "A specific Number",
 	Units: "random",
 	Fam:   "random",
 	Ctx:   "example.random",
@@ -17,7 +17,7 @@ var chartTemplate = module.Chart{
 
 var hiddenChartTemplate = module.Chart{
 	ID:    "hidden_random_%d",
-	Title: "A Random Number",
+	Title: "A specific Number",
 	Units: "random",
 	Fam:   "random",
 	Ctx:   "example.random",
