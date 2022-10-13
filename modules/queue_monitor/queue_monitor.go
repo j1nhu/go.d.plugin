@@ -7,25 +7,22 @@ import (
 
 func init() {
 	module.Register("queue_monitor", module.Creator{
-		Create: func() module.Module { return &QueueMonitor{} }},
+		Create: func() module.Module { return New() }},
 	)
 }
 
 func New() *QueueMonitor {
-	return &QueueMonitor{}
+	return &QueueMonitor{
+		collectedDims: make(map[string]bool),
+	}
 }
 
 type QueueMonitor struct {
 	module.Base
-	rc     *redis.Client
-	charts *module.Charts
+	rc            *redis.Client
+	charts        *module.Charts
+	collectedDims map[string]bool
 }
-
-//type redisClient interface {
-//	LLen(ctx context.Context, key string) *redis.IntCmd
-//	Ping(context.Context) *redis.StatusCmd
-//	Close() error
-//}
 
 func (qm *QueueMonitor) Init() bool {
 	//ctx := context.Background()
