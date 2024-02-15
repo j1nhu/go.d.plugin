@@ -3,10 +3,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/netdata/go.d.plugin/agent"
@@ -15,18 +17,20 @@ import (
 	"github.com/netdata/go.d.plugin/pkg/multipath"
 
 	"github.com/jessevdk/go-flags"
+	"golang.org/x/net/http/httpproxy"
 
 	_ "github.com/netdata/go.d.plugin/modules"
 )
 
 var (
-	cd, _     = os.Getwd()
-	name      = "go.d"
-	userDir   = os.Getenv("NETDATA_USER_CONFIG_DIR")
-	stockDir  = os.Getenv("NETDATA_STOCK_CONFIG_DIR")
-	varLibDir = os.Getenv("NETDATA_LIB_DIR")
-	lockDir   = os.Getenv("NETDATA_LOCK_DIR")
-	watchPath = os.Getenv("NETDATA_PLUGINS_GOD_WATCH_PATH")
+	cd, _       = os.Getwd()
+	name        = "go.d"
+	userDir     = os.Getenv("NETDATA_USER_CONFIG_DIR")
+	stockDir    = os.Getenv("NETDATA_STOCK_CONFIG_DIR")
+	varLibDir   = os.Getenv("NETDATA_LIB_DIR")
+	lockDir     = os.Getenv("NETDATA_LOCK_DIR")
+	watchPath   = os.Getenv("NETDATA_PLUGINS_GOD_WATCH_PATH")
+	envLogLevel = os.Getenv("NETDATA_LOG_LEVEL")
 
 	version = "unknown"
 )
@@ -42,8 +46,8 @@ func confDir(opts *cli.Option) multipath.MultiPath {
 		)
 	}
 	return multipath.New(
-		path.Join(cd, "/../../../../etc/netdata"),
-		path.Join(cd, "/../../../../usr/lib/netdata/conf.d"),
+		filepath.Join(cd, "/../../../../etc/netdata"),
+		filepath.Join(cd, "/../../../../usr/lib/netdata/conf.d"),
 	)
 }
 
@@ -53,16 +57,16 @@ func modulesConfDir(opts *cli.Option) (mpath multipath.MultiPath) {
 	}
 	if userDir != "" || stockDir != "" {
 		if userDir != "" {
-			mpath = append(mpath, path.Join(userDir, name))
+			mpath = append(mpath, filepath.Join(userDir, name))
 		}
 		if stockDir != "" {
-			mpath = append(mpath, path.Join(stockDir, name))
+			mpath = append(mpath, filepath.Join(stockDir, name))
 		}
 		return multipath.New(mpath...)
 	}
 	return multipath.New(
-		path.Join(cd, "/../../../../etc/netdata", name),
-		path.Join(cd, "/../../../../usr/lib/netdata/conf.d", name),
+		filepath.Join(cd, "/../../../../etc/netdata", name),
+		filepath.Join(cd, "/../../../../usr/lib/netdata/conf.d", name),
 	)
 }
 
@@ -77,7 +81,7 @@ func stateFile() string {
 	if varLibDir == "" {
 		return ""
 	}
-	return path.Join(varLibDir, "god-jobs-statuses.json")
+	return filepath.Join(varLibDir, "god-jobs-statuses.json")
 }
 
 func init() {
@@ -95,8 +99,12 @@ func main() {
 		return
 	}
 
+	if envLogLevel != "" {
+		logger.Level.SetByName(envLogLevel)
+	}
+
 	if opts.Debug {
-		logger.SetSeverity(logger.DEBUG)
+		logger.Level.Set(slog.LevelDebug)
 	}
 
 	a := agent.New(agent.Config{
@@ -104,6 +112,7 @@ func main() {
 		ConfDir:           confDir(opts),
 		ModulesConfDir:    modulesConfDir(opts),
 		ModulesSDConfPath: watchPaths(opts),
+		VnodesConfDir:     confDir(opts),
 		StateFile:         stateFile(),
 		LockDir:           lockDir,
 		RunModule:         opts.Module,
@@ -115,13 +124,17 @@ func main() {
 		a.Debugf("current user: name=%s, uid=%s", u.Username, u.Uid)
 	}
 
+	cfg := httpproxy.FromEnvironment()
+	a.Infof("env HTTP_PROXY '%s', HTTPS_PROXY '%s'", cfg.HTTPProxy, cfg.HTTPSProxy)
+
 	a.Run()
 }
 
 func parseCLI() *cli.Option {
 	opt, err := cli.Parse(os.Args)
 	if err != nil {
-		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type == flags.ErrHelp {
+		var flagsErr *flags.Error
+		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
 			os.Exit(0)
 		} else {
 			os.Exit(1)

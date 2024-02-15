@@ -4,6 +4,8 @@ package postgres
 
 import (
 	"database/sql"
+	_ "embed"
+	"sync"
 	"time"
 
 	"github.com/netdata/go.d.plugin/agent/module"
@@ -15,9 +17,13 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("postgres", module.Creator{
-		Create: func() module.Module { return New() },
+		JobConfigSchema: configSchema,
+		Create:          func() module.Module { return New() },
 	})
 }
 
@@ -28,6 +34,10 @@ func New() *Postgres {
 			DSN:                "postgres://postgres:postgres@127.0.0.1:5432/postgres",
 			XactTimeHistogram:  []float64{.1, .5, 1, 2.5, 5, 10},
 			QueryTimeHistogram: []float64{.1, .5, 1, 2.5, 5, 10},
+			// charts: 20 x table, 4 x index.
+			// https://discord.com/channels/847502280503590932/1022693928874549368
+			MaxDBTables:  50,
+			MaxDBIndexes: 250,
 		},
 		charts:  baseCharts.Copy(),
 		dbConns: make(map[string]*dbConn),
@@ -38,8 +48,10 @@ func New() *Postgres {
 			replApps:  make(map[string]*replStandbyAppMetrics),
 			replSlots: make(map[string]*replSlotMetrics),
 		},
-		recheckSettingsEvery: time.Minute * 30,
-		doSlowEvery:          time.Minute * 5,
+		recheckSettingsEvery:              time.Minute * 30,
+		doSlowEvery:                       time.Minute * 5,
+		addXactQueryRunningTimeChartsOnce: &sync.Once{},
+		addWALFilesChartsOnce:             &sync.Once{},
 	}
 }
 
@@ -49,6 +61,8 @@ type Config struct {
 	DBSelector         string       `yaml:"collect_databases_matching"`
 	XactTimeHistogram  []float64    `yaml:"transaction_time_histogram"`
 	QueryTimeHistogram []float64    `yaml:"query_time_histogram"`
+	MaxDBTables        int64        `yaml:"max_db_tables"`
+	MaxDBIndexes       int64        `yaml:"max_db_indexes"`
 }
 
 type (
@@ -64,6 +78,9 @@ type (
 		superUser      *bool
 		pgIsInRecovery *bool
 		pgVersion      int
+
+		addXactQueryRunningTimeChartsOnce *sync.Once
+		addWALFilesChartsOnce             *sync.Once
 
 		dbSr matcher.Matcher
 
@@ -97,10 +114,7 @@ func (p *Postgres) Init() bool {
 	p.dbSr = sr
 
 	p.mx.xactTimeHist = metrics.NewHistogramWithRangeBuckets(p.XactTimeHistogram)
-	p.addTransactionsRunTimeHistogramChart()
-
 	p.mx.queryTimeHist = metrics.NewHistogramWithRangeBuckets(p.QueryTimeHistogram)
-	p.addQueriesRunTimeHistogramChart()
 
 	return true
 }

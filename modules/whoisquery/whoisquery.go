@@ -3,21 +3,24 @@
 package whoisquery
 
 import (
-	"errors"
+	_ "embed"
 	"time"
 
 	"github.com/netdata/go.d.plugin/agent/module"
 	"github.com/netdata/go.d.plugin/pkg/web"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
-	creator := module.Creator{
+	module.Register("whoisquery", module.Creator{
+		JobConfigSchema: configSchema,
 		Defaults: module.Defaults{
 			UpdateEvery: 60,
 		},
 		Create: func() module.Module { return New() },
-	}
-	module.Register("whoisquery", creator)
+	})
 }
 
 func New() *WhoisQuery {
@@ -40,50 +43,42 @@ type Config struct {
 type WhoisQuery struct {
 	module.Base
 	Config `yaml:",inline"`
-	prov   provider
+
+	charts *module.Charts
+
+	prov provider
 }
 
-func (wq WhoisQuery) validateConfig() error {
-	if wq.Source == "" {
-		return errors.New("source is not set")
+func (w *WhoisQuery) Init() bool {
+	if err := w.validateConfig(); err != nil {
+		w.Errorf("config validation: %v", err)
+		return false
 	}
-	return nil
-}
 
-func (wq *WhoisQuery) initProvider() error {
-	p, err := newProvider(wq.Config)
+	prov, err := w.initProvider()
 	if err != nil {
-		return err
-	}
-	wq.prov = p
-	return nil
-}
-
-func (wq *WhoisQuery) Init() bool {
-	if err := wq.validateConfig(); err != nil {
-		wq.Errorf("error on validating config: %v", err)
+		w.Errorf("init whois provider: %v", err)
 		return false
 	}
+	w.prov = prov
 
-	if err := wq.initProvider(); err != nil {
-		wq.Errorf("error on initializing whois provider: %v", err)
-		return false
-	}
+	w.charts = w.initCharts()
+
 	return true
 }
 
-func (wq *WhoisQuery) Check() bool {
-	return len(wq.Collect()) > 0
+func (w *WhoisQuery) Check() bool {
+	return len(w.Collect()) > 0
 }
 
-func (wq WhoisQuery) Charts() *Charts {
-	return charts.Copy()
+func (w *WhoisQuery) Charts() *module.Charts {
+	return w.charts
 }
 
-func (wq *WhoisQuery) Collect() map[string]int64 {
-	mx, err := wq.collect()
+func (w *WhoisQuery) Collect() map[string]int64 {
+	mx, err := w.collect()
 	if err != nil {
-		wq.Error(err)
+		w.Error(err)
 	}
 
 	if len(mx) == 0 {
@@ -92,4 +87,4 @@ func (wq *WhoisQuery) Collect() map[string]int64 {
 	return mx
 }
 
-func (WhoisQuery) Cleanup() {}
+func (w *WhoisQuery) Cleanup() {}

@@ -3,40 +3,20 @@
 package agent
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/netdata/go.d.plugin/agent/job/confgroup"
-	"github.com/netdata/go.d.plugin/agent/job/discovery"
-	"github.com/netdata/go.d.plugin/agent/job/discovery/dummy"
-	"github.com/netdata/go.d.plugin/agent/job/discovery/file"
+	"github.com/netdata/go.d.plugin/agent/confgroup"
+	"github.com/netdata/go.d.plugin/agent/discovery"
+	"github.com/netdata/go.d.plugin/agent/discovery/dummy"
+	"github.com/netdata/go.d.plugin/agent/discovery/file"
+	"github.com/netdata/go.d.plugin/agent/hostinfo"
 	"github.com/netdata/go.d.plugin/agent/module"
+	"github.com/netdata/go.d.plugin/agent/vnodes"
 
 	"gopkg.in/yaml.v2"
 )
-
-func defaultConfig() config {
-	return config{
-		Enabled:    true,
-		DefaultRun: true,
-		MaxProcs:   0,
-		Modules:    nil,
-	}
-}
-
-type config struct {
-	Enabled    bool            `yaml:"enabled"`
-	DefaultRun bool            `yaml:"default_run"`
-	MaxProcs   int             `yaml:"max_procs"`
-	Modules    map[string]bool `yaml:"modules"`
-}
-
-func (c config) String() string {
-	return fmt.Sprintf("enabled '%v', default_run '%v', max_procs '%d'",
-		c.Enabled, c.DefaultRun, c.MaxProcs)
-}
 
 func (a *Agent) loadPluginConfig() config {
 	a.Info("loading config file")
@@ -47,7 +27,7 @@ func (a *Agent) loadPluginConfig() config {
 	}
 
 	cfgPath := a.Name + ".conf"
-	a.Infof("looking for '%s' in %v", cfgPath, a.ConfDir)
+	a.Debugf("looking for '%s' in %v", cfgPath, a.ConfDir)
 
 	path, err := a.ConfDir.Find(cfgPath)
 	if err != nil || path == "" {
@@ -75,17 +55,22 @@ func (a *Agent) loadEnabledModules(cfg config) module.Registry {
 		if !all && a.RunModule != name {
 			continue
 		}
-		if all && creator.Disabled && !cfg.isExplicitlyEnabled(name) {
-			a.Infof("'%s' module disabled by default, should be explicitly enabled in the config", name)
-			continue
-		}
-		if all && !cfg.isImplicitlyEnabled(name) {
-			a.Infof("'%s' module disabled in the config file", name)
-			continue
+		if all {
+			// Known issue: go.d/logind high CPU usage on Alma Linux8 (https://github.com/netdata/netdata/issues/15930)
+			if !cfg.isExplicitlyEnabled(name) && (creator.Disabled || name == "logind" && hostinfo.SystemdVersion == 239) {
+				a.Infof("'%s' module disabled by default, should be explicitly enabled in the config", name)
+				continue
+			}
+			if !cfg.isImplicitlyEnabled(name) {
+				a.Infof("'%s' module disabled in the config file", name)
+				continue
+			}
 		}
 		enabled[name] = creator
 	}
+
 	a.Infof("enabled/registered modules: %d/%d", len(enabled), len(a.ModuleRegistry))
+
 	return enabled
 }
 
@@ -119,8 +104,25 @@ func (a *Agent) buildDiscoveryConf(enabled module.Registry) discovery.Config {
 	}
 
 	for name := range enabled {
+		// TODO: properly handle module renaming
+		// We need to announce this change in Netdata v1.39.0 release notes and then remove this workaround.
+		// This is just a quick fix for wmi=>windows. We need to prefer user wmi.conf over windows.conf
+		// 2nd part of this fix is in /agent/job/discovery/file/parse.go parseStaticFormat()
+		if name == "windows" {
+			cfgName := "wmi.conf"
+			a.Debugf("looking for '%s' in %v", cfgName, a.ModulesConfDir)
+
+			path, err := a.ModulesConfDir.Find(cfgName)
+
+			if err == nil && strings.Contains(path, "etc/netdata") {
+				a.Infof("found '%s", path)
+				readPaths = append(readPaths, path)
+				continue
+			}
+		}
+
 		cfgName := name + ".conf"
-		a.Infof("looking for '%s' in %v", cfgName, a.ModulesConfDir)
+		a.Debugf("looking for '%s' in %v", cfgName, a.ModulesConfDir)
 
 		path, err := a.ModulesConfDir.Find(cfgName)
 		if isInsideK8sCluster() {
@@ -136,7 +138,7 @@ func (a *Agent) buildDiscoveryConf(enabled module.Registry) discovery.Config {
 			a.Infof("couldn't find '%s' module config, will use default config", name)
 			dummyPaths = append(dummyPaths, name)
 		} else {
-			a.Infof("found '%s", path)
+			a.Debugf("found '%s", path)
 			readPaths = append(readPaths, path)
 		}
 	}
@@ -154,50 +156,22 @@ func (a *Agent) buildDiscoveryConf(enabled module.Registry) discovery.Config {
 	}
 }
 
-func (c config) isExplicitlyEnabled(moduleName string) bool {
-	return c.isEnabled(moduleName, true)
-}
+func (a *Agent) setupVnodeRegistry() *vnodes.Vnodes {
+	a.Debugf("looking for 'vnodes/' in %v", a.VnodesConfDir)
 
-func (c config) isImplicitlyEnabled(moduleName string) bool {
-	return c.isEnabled(moduleName, false)
-}
-
-func (c config) isEnabled(moduleName string, explicit bool) bool {
-	if enabled, ok := c.Modules[moduleName]; ok {
-		return enabled
-	}
-	if explicit {
-		return false
-	}
-	return c.DefaultRun
-}
-
-func (c *config) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type plain config
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
+	if len(a.VnodesConfDir) == 0 {
+		return nil
 	}
 
-	var m map[string]interface{}
-	if err := unmarshal(&m); err != nil {
-		return err
+	dirPath, err := a.VnodesConfDir.Find("vnodes/")
+	if err != nil || dirPath == "" {
+		return nil
 	}
 
-	for key, value := range m {
-		switch key {
-		case "enabled", "default_run", "max_procs", "modules":
-			continue
-		}
-		var b bool
-		if in, err := yaml.Marshal(value); err != nil || yaml.Unmarshal(in, &b) != nil {
-			continue
-		}
-		if c.Modules == nil {
-			c.Modules = make(map[string]bool)
-		}
-		c.Modules[key] = b
-	}
-	return nil
+	reg := vnodes.New(dirPath)
+	a.Infof("found '%s' (%d vhosts)", dirPath, reg.Len())
+
+	return reg
 }
 
 func loadYAML(conf interface{}, path string) error {

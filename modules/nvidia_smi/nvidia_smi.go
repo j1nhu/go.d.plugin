@@ -1,17 +1,24 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package nvidia_smi
 
 import (
+	_ "embed"
 	"time"
 
 	"github.com/netdata/go.d.plugin/agent/module"
 	"github.com/netdata/go.d.plugin/pkg/web"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("nvidia_smi", module.Creator{
+		JobConfigSchema: configSchema,
 		Defaults: module.Defaults{
 			Disabled:    true,
-			UpdateEvery: 5,
+			UpdateEvery: 10,
 		},
 		Create: func() module.Module { return New() },
 	})
@@ -20,18 +27,21 @@ func init() {
 func New() *NvidiaSMI {
 	return &NvidiaSMI{
 		Config: Config{
-			Timeout: web.Duration{Duration: time.Second * 5},
+			Timeout:      web.Duration{Duration: time.Second * 10},
+			UseCSVFormat: true,
 		},
 		binName: "nvidia-smi",
 		charts:  &module.Charts{},
 		gpus:    make(map[string]bool),
+		migs:    make(map[string]bool),
 	}
 
 }
 
 type Config struct {
-	Timeout    web.Duration
-	BinaryPath string `yaml:"binary_path"`
+	Timeout      web.Duration
+	BinaryPath   string `yaml:"binary_path"`
+	UseCSVFormat bool   `yaml:"use_csv_format"`
 }
 
 type (
@@ -44,10 +54,15 @@ type (
 		binName string
 		exec    nvidiaSMI
 
+		gpuQueryProperties []string
+
 		gpus map[string]bool
+		migs map[string]bool
 	}
 	nvidiaSMI interface {
-		queryXML() ([]byte, error)
+		queryGPUInfoXML() ([]byte, error)
+		queryGPUInfoCSV(properties []string) ([]byte, error)
+		queryHelpQueryGPU() ([]byte, error)
 	}
 )
 

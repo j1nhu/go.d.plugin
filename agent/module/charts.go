@@ -38,10 +38,12 @@ const (
 )
 
 const (
-	// Not documented, the source https://github.com/netdata/netdata/blob/7772d35db617fc268a5f8e79d85fc093bef43a8d/database/rrd.h#L180-L186
+	// Not documented.
+	// https://github.com/netdata/netdata/blob/cc2586de697702f86a3c34e60e23652dd4ddcb42/database/rrd.h#L204
 
-	LabelSourceConf = 2
-	LabelSourceK8s  = 4
+	LabelSourceAuto = 1 << 0
+	LabelSourceConf = 1 << 1
+	LabelSourceK8s  = 1 << 2
 )
 
 func (d DimAlgo) String() string {
@@ -80,14 +82,16 @@ type (
 		typ string
 		id  string
 
-		ID       string
-		OverID   string
-		Title    string
-		Units    string
-		Fam      string
-		Ctx      string
-		Type     ChartType
-		Priority int
+		OverModule string
+		IDSep      bool
+		ID         string
+		OverID     string
+		Title      string
+		Units      string
+		Fam        string
+		Ctx        string
+		Type       ChartType
+		Priority   int
 		Opts
 
 		Labels []Label
@@ -137,6 +141,7 @@ type (
 	// For detailed description please visit https://docs.netdata.cloud/collectors/plugins.d/#variable
 	Var struct {
 		ID    string
+		Name  string
 		Value int64
 	}
 
@@ -193,7 +198,7 @@ func (c *Charts) Add(charts ...*Chart) error {
 	for _, chart := range charts {
 		err := checkChart(chart)
 		if err != nil {
-			return fmt.Errorf("error on adding chart : %s", err)
+			return fmt.Errorf("error on adding chart '%s' : %s", chart.ID, err)
 		}
 		if chart := c.Get(chart.ID); chart != nil && !chart.remove {
 			return fmt.Errorf("error on adding chart : '%s' is already in charts", chart.ID)

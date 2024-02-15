@@ -5,6 +5,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,6 +46,9 @@ func (m *MySQL) collect() (map[string]int64, error) {
 	if hasGaleraMetrics(mx) {
 		m.addGaleraOnce.Do(m.addGaleraCharts)
 	}
+	if hasTableOpenCacheOverflowsMetrics(mx) {
+		m.addTableOpenCacheOverflowsOnce.Do(m.addTableOpenCacheOverflowChart)
+	}
 
 	now := time.Now()
 	if now.Sub(m.recheckGlobalVarsTime) > m.recheckGlobalVarsEvery {
@@ -65,17 +69,15 @@ func (m *MySQL) collect() (map[string]int64, error) {
 	// TODO: perhaps make a decisions based on privileges? (SHOW GRANTS FOR CURRENT_USER();)
 	if m.doSlaveStatus {
 		if err := m.collectSlaveStatus(mx); err != nil {
-			m.Errorf("error on collecting slave status: %v", err)
-			// TODO: shouldn't disable on any error
-			m.doSlaveStatus = false
+			m.Warningf("error on collecting slave status: %v", err)
+			m.doSlaveStatus = errors.Is(err, context.DeadlineExceeded)
 		}
 	}
 
 	if m.doUserStatistics {
 		if err := m.collectUserStatistics(mx); err != nil {
-			m.Errorf("error on collecting user statistics: %v", err)
-			// TODO: shouldn't disable on any error
-			m.doUserStatistics = false
+			m.Warningf("error on collecting user statistics: %v", err)
+			m.doUserStatistics = errors.Is(err, context.DeadlineExceeded)
 		}
 	}
 
@@ -90,7 +92,7 @@ func (m *MySQL) collect() (map[string]int64, error) {
 func (m *MySQL) openConnection() error {
 	db, err := sql.Open("mysql", m.DSN)
 	if err != nil {
-		return fmt.Errorf("error on opening a connection with the mysql database [%s]: %v", m.DSN, err)
+		return fmt.Errorf("error on opening a connection with the mysql database [%s]: %v", m.safeDSN, err)
 	}
 
 	db.SetConnMaxLifetime(10 * time.Minute)
@@ -100,7 +102,7 @@ func (m *MySQL) openConnection() error {
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("error on pinging the mysql database [%s]: %v", m.DSN, err)
+		return fmt.Errorf("error on pinging the mysql database [%s]: %v", m.safeDSN, err)
 	}
 
 	m.db = db
@@ -134,6 +136,11 @@ func hasGaleraMetrics(collected map[string]int64) bool {
 
 func hasQCacheMetrics(collected map[string]int64) bool {
 	_, ok := collected["qcache_hits"]
+	return ok
+}
+
+func hasTableOpenCacheOverflowsMetrics(collected map[string]int64) bool {
+	_, ok := collected["table_open_cache_overflows"]
 	return ok
 }
 

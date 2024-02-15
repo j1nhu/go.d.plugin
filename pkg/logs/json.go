@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/valyala/fastjson"
 )
@@ -46,6 +47,15 @@ func (p *JSONParser) Parse(row []byte, line LogLine) error {
 	if err != nil {
 		return err
 	}
+
+	if err := p.parseObject("", val, line); err != nil {
+		return &ParseError{msg: fmt.Sprintf("json parse: %v", err), err: err}
+	}
+
+	return nil
+}
+
+func (p *JSONParser) parseObject(prefix string, val *fastjson.Value, line LogLine) error {
 	obj, err := val.Object()
 	if err != nil {
 		return err
@@ -55,34 +65,74 @@ func (p *JSONParser) Parse(row []byte, line LogLine) error {
 		if err != nil {
 			return
 		}
+
+		k := jsonObjKey(prefix, string(key))
+
 		switch v.Type() {
 		case fastjson.TypeString, fastjson.TypeNumber:
+			err = p.parseStringNumber(k, v, line)
+		case fastjson.TypeArray:
+			err = p.parseArray(k, v, line)
+		case fastjson.TypeObject:
+			err = p.parseObject(k, v, line)
 		default:
 			return
-		}
-
-		name := string(key)
-		if mapped, ok := p.mapping[name]; ok {
-			name = mapped
-		}
-
-		p.buf = p.buf[:0]
-		if p.buf = v.MarshalTo(p.buf); len(p.buf) == 0 {
-			return
-		}
-
-		switch v.Type() {
-		case fastjson.TypeString:
-			// trim "
-			err = line.Assign(name, string(p.buf[1:len(p.buf)-1]))
-		default:
-			err = line.Assign(name, string(p.buf))
 		}
 	})
-	if err != nil {
-		return &ParseError{msg: fmt.Sprintf("json parse: %v", err), err: err}
+
+	return err
+}
+
+func jsonObjKey(prefix, key string) string {
+	if prefix == "" {
+		return key
 	}
-	return nil
+	return prefix + "." + key
+}
+
+func (p *JSONParser) parseArray(key string, val *fastjson.Value, line LogLine) error {
+	arr, err := val.Array()
+	if err != nil {
+		return err
+	}
+
+	for i, v := range arr {
+		k := jsonObjKey(key, strconv.Itoa(i))
+
+		switch v.Type() {
+		case fastjson.TypeString, fastjson.TypeNumber:
+			err = p.parseStringNumber(k, v, line)
+		case fastjson.TypeArray:
+			err = p.parseArray(k, v, line)
+		case fastjson.TypeObject:
+			err = p.parseObject(k, v, line)
+		default:
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+
+func (p *JSONParser) parseStringNumber(key string, val *fastjson.Value, line LogLine) error {
+	if mapped, ok := p.mapping[key]; ok {
+		key = mapped
+	}
+
+	p.buf = p.buf[:0]
+	if p.buf = val.MarshalTo(p.buf); len(p.buf) == 0 {
+		return nil
+	}
+
+	if val.Type() == fastjson.TypeString {
+		// trim "
+		return line.Assign(key, string(p.buf[1:len(p.buf)-1]))
+	}
+	return line.Assign(key, string(p.buf))
 }
 
 func (p *JSONParser) Info() string {

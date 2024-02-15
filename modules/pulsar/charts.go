@@ -44,7 +44,7 @@ var (
 	sumBrokerComponentsChart = Chart{
 		ID:    "broker_components",
 		Title: "Broker Components",
-		Units: "num",
+		Units: "components",
 		Fam:   "ns summary",
 		Ctx:   "pulsar.broker_components",
 		Type:  module.Stacked,
@@ -473,7 +473,7 @@ var (
 	}
 )
 
-func (p *Pulsar) adjustCharts(pms prometheus.Metrics) {
+func (p *Pulsar) adjustCharts(pms prometheus.Series) {
 	if pms := pms.FindByName(metricPulsarStorageReadRate); pms.Len() == 0 || pms[0].Labels.Get("namespace") == "" {
 		p.removeSummaryChart(sumStorageOperationsRateChart.ID)
 		p.removeNamespaceChart(nsStorageOperationsChart.ID)

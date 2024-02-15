@@ -3,6 +3,7 @@
 package httpcheck
 
 import (
+	_ "embed"
 	"net/http"
 	"regexp"
 	"time"
@@ -12,8 +13,12 @@ import (
 	"github.com/netdata/go.d.plugin/agent/module"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("httpcheck", module.Creator{
+		JobConfigSchema: configSchema,
 		Defaults: module.Defaults{
 			UpdateEvery: 5,
 		},
@@ -35,27 +40,38 @@ func New() *HTTPCheck {
 	}
 }
 
-type Config struct {
-	web.HTTP         `yaml:",inline"`
-	AcceptedStatuses []int  `yaml:"status_accepted"`
-	ResponseMatch    string `yaml:"response_match"`
-}
-
 type (
-	HTTPCheck struct {
-		module.Base
-		Config      `yaml:",inline"`
-		UpdateEvery int `yaml:"update_every"`
-
-		acceptedStatuses map[int]bool
-		reResponse       *regexp.Regexp
-		client           client
-		metrics          metrics
+	Config struct {
+		web.HTTP         `yaml:",inline"`
+		UpdateEvery      int                 `yaml:"update_every"`
+		AcceptedStatuses []int               `yaml:"status_accepted"`
+		ResponseMatch    string              `yaml:"response_match"`
+		CookieFile       string              `yaml:"cookie_file"`
+		HeaderMatch      []HeaderMatchConfig `yaml:"header_match"`
 	}
-	client interface {
-		Do(*http.Request) (*http.Response, error)
+	HeaderMatchConfig struct {
+		Exclude bool   `yaml:"exclude"`
+		Key     string `yaml:"key"`
+		Value   string `yaml:"value"`
 	}
 )
+
+type HTTPCheck struct {
+	module.Base
+	Config `yaml:",inline"`
+
+	httpClient *http.Client
+
+	charts *module.Charts
+
+	acceptedStatuses map[int]bool
+	reResponse       *regexp.Regexp
+	headerMatch      []headerMatch
+
+	cookieFileModTime time.Time
+
+	metrics metrics
+}
 
 func (hc *HTTPCheck) Init() bool {
 	if err := hc.validateConfig(); err != nil {
@@ -63,12 +79,14 @@ func (hc *HTTPCheck) Init() bool {
 		return false
 	}
 
+	hc.charts = hc.initCharts()
+
 	httpClient, err := hc.initHTTPClient()
 	if err != nil {
 		hc.Errorf("init HTTP client: %v", err)
 		return false
 	}
-	hc.client = httpClient
+	hc.httpClient = httpClient
 
 	re, err := hc.initResponseMatchRegexp()
 	if err != nil {
@@ -76,6 +94,13 @@ func (hc *HTTPCheck) Init() bool {
 		return false
 	}
 	hc.reResponse = re
+
+	hm, err := hc.initHeaderMatch()
+	if err != nil {
+		hc.Errorf("init header match: %v", err)
+		return false
+	}
+	hc.headerMatch = hm
 
 	for _, v := range hc.AcceptedStatuses {
 		hc.acceptedStatuses[v] = true
@@ -96,7 +121,7 @@ func (hc *HTTPCheck) Check() bool {
 }
 
 func (hc *HTTPCheck) Charts() *module.Charts {
-	return charts.Copy()
+	return hc.charts
 }
 
 func (hc *HTTPCheck) Collect() map[string]int64 {
@@ -111,4 +136,8 @@ func (hc *HTTPCheck) Collect() map[string]int64 {
 	return mx
 }
 
-func (hc *HTTPCheck) Cleanup() {}
+func (hc *HTTPCheck) Cleanup() {
+	if hc.httpClient != nil {
+		hc.httpClient.CloseIdleConnections()
+	}
+}

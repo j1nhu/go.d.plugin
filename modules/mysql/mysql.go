@@ -4,19 +4,26 @@ package mysql
 
 import (
 	"database/sql"
+	_ "embed"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/netdata/go.d.plugin/agent/module"
 	"github.com/netdata/go.d.plugin/pkg/web"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("mysql", module.Creator{
-		Create: func() module.Module { return New() },
+		JobConfigSchema: configSchema,
+		Create:          func() module.Module { return New() },
 	})
 }
 
@@ -27,17 +34,18 @@ func New() *MySQL {
 			Timeout: web.Duration{Duration: time.Second},
 		},
 
-		charts:                 baseCharts.Copy(),
-		addInnoDBOSLogOnce:     &sync.Once{},
-		addBinlogOnce:          &sync.Once{},
-		addMyISAMOnce:          &sync.Once{},
-		addInnodbDeadlocksOnce: &sync.Once{},
-		addGaleraOnce:          &sync.Once{},
-		addQCacheOnce:          &sync.Once{},
-		doSlaveStatus:          true,
-		doUserStatistics:       true,
-		collectedReplConns:     make(map[string]bool),
-		collectedUsers:         make(map[string]bool),
+		charts:                         baseCharts.Copy(),
+		addInnoDBOSLogOnce:             &sync.Once{},
+		addBinlogOnce:                  &sync.Once{},
+		addMyISAMOnce:                  &sync.Once{},
+		addInnodbDeadlocksOnce:         &sync.Once{},
+		addGaleraOnce:                  &sync.Once{},
+		addQCacheOnce:                  &sync.Once{},
+		addTableOpenCacheOverflowsOnce: &sync.Once{},
+		doSlaveStatus:                  true,
+		doUserStatistics:               true,
+		collectedReplConns:             make(map[string]bool),
+		collectedUsers:                 make(map[string]bool),
 
 		recheckGlobalVarsEvery: time.Minute * 10,
 	}
@@ -55,18 +63,20 @@ type MySQL struct {
 	Config `yaml:",inline"`
 
 	db        *sql.DB
+	safeDSN   string
 	version   *semver.Version
 	isMariaDB bool
 	isPercona bool
 
 	charts *module.Charts
 
-	addInnoDBOSLogOnce     *sync.Once
-	addBinlogOnce          *sync.Once
-	addMyISAMOnce          *sync.Once
-	addInnodbDeadlocksOnce *sync.Once
-	addGaleraOnce          *sync.Once
-	addQCacheOnce          *sync.Once
+	addInnoDBOSLogOnce             *sync.Once
+	addBinlogOnce                  *sync.Once
+	addMyISAMOnce                  *sync.Once
+	addInnodbDeadlocksOnce         *sync.Once
+	addGaleraOnce                  *sync.Once
+	addQCacheOnce                  *sync.Once
+	addTableOpenCacheOverflowsOnce *sync.Once
 
 	doSlaveStatus      bool
 	collectedReplConns map[string]bool
@@ -79,6 +89,7 @@ type MySQL struct {
 	varTableOpenCache        int64
 	varDisabledStorageEngine string
 	varLogBin                string
+	varPerformanceSchema     string
 }
 
 func (m *MySQL) Init() bool {
@@ -95,6 +106,15 @@ func (m *MySQL) Init() bool {
 		m.Error("DSN not set")
 		return false
 	}
+
+	cfg, err := mysql.ParseDSN(m.DSN)
+	if err != nil {
+		m.Errorf("error on parsing DSN: %v", err)
+		return false
+	}
+
+	cfg.Passwd = strings.Repeat("*", len(cfg.Passwd))
+	m.safeDSN = cfg.FormatDSN()
 
 	m.Debugf("using DSN [%s]", m.DSN)
 	return true
@@ -125,7 +145,7 @@ func (m *MySQL) Cleanup() {
 		return
 	}
 	if err := m.db.Close(); err != nil {
-		m.Errorf("cleanup: error on closing the mysql database [%s]: %v", m.DSN, err)
+		m.Errorf("cleanup: error on closing the mysql database [%s]: %v", m.safeDSN, err)
 	}
 	m.db = nil
 }

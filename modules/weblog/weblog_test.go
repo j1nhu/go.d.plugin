@@ -24,6 +24,7 @@ var (
 	testFullLog, _            = os.ReadFile("testdata/full.log")
 	testCustomLog, _          = os.ReadFile("testdata/custom.log")
 	testCustomTimeFieldLog, _ = os.ReadFile("testdata/custom_time_fields.log")
+	testIISLog, _             = os.ReadFile("testdata/u_ex221107.log")
 )
 
 func Test_readTestData(t *testing.T) {
@@ -31,6 +32,7 @@ func Test_readTestData(t *testing.T) {
 	assert.NotNil(t, testCommonLog)
 	assert.NotNil(t, testCustomLog)
 	assert.NotNil(t, testCustomTimeFieldLog)
+	assert.NotNil(t, testIISLog)
 }
 
 func TestNew(t *testing.T) {
@@ -558,6 +560,155 @@ func TestWebLog_Collect_CustomTimeFieldsLogs(t *testing.T) {
 	testCharts(t, weblog, mx)
 }
 
+func TestWebLog_Collect_CustomNumericFieldsLogs(t *testing.T) {
+	weblog := prepareWebLogCollectCustomNumericFields(t)
+
+	expected := map[string]int64{
+		"bytes_received": 0,
+		"bytes_sent":     0,
+		"custom_numeric_field_numeric1_summary_avg":   224,
+		"custom_numeric_field_numeric1_summary_count": 72,
+		"custom_numeric_field_numeric1_summary_max":   431,
+		"custom_numeric_field_numeric1_summary_min":   121,
+		"custom_numeric_field_numeric1_summary_sum":   16152,
+		"custom_numeric_field_numeric2_summary_avg":   255,
+		"custom_numeric_field_numeric2_summary_count": 72,
+		"custom_numeric_field_numeric2_summary_max":   321,
+		"custom_numeric_field_numeric2_summary_min":   123,
+		"custom_numeric_field_numeric2_summary_sum":   18360,
+		"req_http_scheme":                   0,
+		"req_https_scheme":                  0,
+		"req_ipv4":                          0,
+		"req_ipv6":                          0,
+		"req_proc_time_avg":                 0,
+		"req_proc_time_count":               0,
+		"req_proc_time_hist_bucket_1":       0,
+		"req_proc_time_hist_bucket_10":      0,
+		"req_proc_time_hist_bucket_11":      0,
+		"req_proc_time_hist_bucket_2":       0,
+		"req_proc_time_hist_bucket_3":       0,
+		"req_proc_time_hist_bucket_4":       0,
+		"req_proc_time_hist_bucket_5":       0,
+		"req_proc_time_hist_bucket_6":       0,
+		"req_proc_time_hist_bucket_7":       0,
+		"req_proc_time_hist_bucket_8":       0,
+		"req_proc_time_hist_bucket_9":       0,
+		"req_proc_time_hist_count":          0,
+		"req_proc_time_hist_sum":            0,
+		"req_proc_time_max":                 0,
+		"req_proc_time_min":                 0,
+		"req_proc_time_sum":                 0,
+		"req_type_bad":                      0,
+		"req_type_error":                    0,
+		"req_type_redirect":                 0,
+		"req_type_success":                  0,
+		"req_unmatched":                     0,
+		"requests":                          72,
+		"resp_1xx":                          0,
+		"resp_2xx":                          0,
+		"resp_3xx":                          0,
+		"resp_4xx":                          0,
+		"resp_5xx":                          0,
+		"uniq_ipv4":                         0,
+		"uniq_ipv6":                         0,
+		"upstream_resp_time_avg":            0,
+		"upstream_resp_time_count":          0,
+		"upstream_resp_time_hist_bucket_1":  0,
+		"upstream_resp_time_hist_bucket_10": 0,
+		"upstream_resp_time_hist_bucket_11": 0,
+		"upstream_resp_time_hist_bucket_2":  0,
+		"upstream_resp_time_hist_bucket_3":  0,
+		"upstream_resp_time_hist_bucket_4":  0,
+		"upstream_resp_time_hist_bucket_5":  0,
+		"upstream_resp_time_hist_bucket_6":  0,
+		"upstream_resp_time_hist_bucket_7":  0,
+		"upstream_resp_time_hist_bucket_8":  0,
+		"upstream_resp_time_hist_bucket_9":  0,
+		"upstream_resp_time_hist_count":     0,
+		"upstream_resp_time_hist_sum":       0,
+		"upstream_resp_time_max":            0,
+		"upstream_resp_time_min":            0,
+		"upstream_resp_time_sum":            0,
+	}
+
+	mx := weblog.Collect()
+
+	assert.Equal(t, expected, mx)
+	testCharts(t, weblog, mx)
+}
+
+func TestWebLog_IISLogs(t *testing.T) {
+	weblog := prepareWebLogCollectIISFields(t)
+
+	expected := map[string]int64{
+		"bytes_received":                    0,
+		"bytes_sent":                        0,
+		"req_http_scheme":                   0,
+		"req_https_scheme":                  0,
+		"req_ipv4":                          38,
+		"req_ipv6":                          114,
+		"req_method_GET":                    152,
+		"req_port_80":                       152,
+		"req_proc_time_avg":                 5,
+		"req_proc_time_count":               152,
+		"req_proc_time_hist_bucket_1":       133,
+		"req_proc_time_hist_bucket_10":      145,
+		"req_proc_time_hist_bucket_11":      146,
+		"req_proc_time_hist_bucket_2":       133,
+		"req_proc_time_hist_bucket_3":       133,
+		"req_proc_time_hist_bucket_4":       133,
+		"req_proc_time_hist_bucket_5":       133,
+		"req_proc_time_hist_bucket_6":       133,
+		"req_proc_time_hist_bucket_7":       133,
+		"req_proc_time_hist_bucket_8":       138,
+		"req_proc_time_hist_bucket_9":       143,
+		"req_proc_time_hist_count":          152,
+		"req_proc_time_hist_sum":            799,
+		"req_proc_time_max":                 256,
+		"req_proc_time_min":                 0,
+		"req_proc_time_sum":                 799,
+		"req_type_bad":                      42,
+		"req_type_error":                    0,
+		"req_type_redirect":                 0,
+		"req_type_success":                  110,
+		"req_unmatched":                     16,
+		"req_vhost_127.0.0.1":               38,
+		"req_vhost_::1":                     114,
+		"requests":                          168,
+		"resp_1xx":                          0,
+		"resp_2xx":                          99,
+		"resp_3xx":                          11,
+		"resp_4xx":                          42,
+		"resp_5xx":                          0,
+		"resp_code_200":                     99,
+		"resp_code_304":                     11,
+		"resp_code_404":                     42,
+		"uniq_ipv4":                         1,
+		"uniq_ipv6":                         1,
+		"upstream_resp_time_avg":            0,
+		"upstream_resp_time_count":          0,
+		"upstream_resp_time_hist_bucket_1":  0,
+		"upstream_resp_time_hist_bucket_10": 0,
+		"upstream_resp_time_hist_bucket_11": 0,
+		"upstream_resp_time_hist_bucket_2":  0,
+		"upstream_resp_time_hist_bucket_3":  0,
+		"upstream_resp_time_hist_bucket_4":  0,
+		"upstream_resp_time_hist_bucket_5":  0,
+		"upstream_resp_time_hist_bucket_6":  0,
+		"upstream_resp_time_hist_bucket_7":  0,
+		"upstream_resp_time_hist_bucket_8":  0,
+		"upstream_resp_time_hist_bucket_9":  0,
+		"upstream_resp_time_hist_count":     0,
+		"upstream_resp_time_hist_sum":       0,
+		"upstream_resp_time_max":            0,
+		"upstream_resp_time_min":            0,
+		"upstream_resp_time_sum":            0,
+	}
+
+	mx := weblog.Collect()
+	assert.Equal(t, expected, mx)
+}
+
 func testCharts(t *testing.T, w *WebLog, mx map[string]int64) {
 	testVhostChart(t, w)
 	testPortChart(t, w)
@@ -575,6 +726,7 @@ func testCharts(t *testing.T, w *WebLog, mx map[string]int64) {
 	testURLPatternStatsCharts(t, w)
 	testCustomFieldCharts(t, w)
 	testCustomTimeFieldCharts(t, w)
+	testCustomNumericFieldCharts(t, w)
 
 	testChartsDimIDs(t, w, mx)
 }
@@ -931,6 +1083,25 @@ func testCustomTimeFieldCharts(t *testing.T, w *WebLog) {
 	}
 }
 
+func testCustomNumericFieldCharts(t *testing.T, w *WebLog) {
+	for _, cf := range w.CustomNumericFields {
+		id := fmt.Sprintf(customNumericFieldSummaryChartTmpl.ID, cf.Name)
+		chart := w.Charts().Get(id)
+		assert.NotNilf(t, chart, "chart '%s' is not created", id)
+		if chart == nil {
+			continue
+		}
+		dimMinID := fmt.Sprintf("custom_numeric_field_%s_summary_min", cf.Name)
+		assert.True(t, chart.HasDim(dimMinID), "chart '%s' has no dim for '%s' name, expected '%s'", chart.ID, cf.Name, dimMinID)
+
+		dimMaxID := fmt.Sprintf("custom_numeric_field_%s_summary_min", cf.Name)
+		assert.True(t, chart.HasDim(dimMaxID), "chart '%s' has no dim for '%s' name, expected '%s'", chart.ID, cf.Name, dimMaxID)
+
+		dimAveID := fmt.Sprintf("custom_numeric_field_%s_summary_min", cf.Name)
+		assert.True(t, chart.HasDim(dimAveID), "chart '%s' has no dim for '%s' name, expected '%s'", chart.ID, cf.Name, dimAveID)
+	}
+}
+
 var (
 	emptySummary   = newWebLogSummary()
 	emptyHistogram = metrics.NewHistogram(metrics.DefBuckets)
@@ -1162,6 +1333,102 @@ func prepareWebLogCollectCustomTimeFields(t *testing.T) *WebLog {
 	defer weblog.Cleanup()
 
 	p, err := logs.NewCSVParser(weblog.Parser.CSV, bytes.NewReader(testCustomTimeFieldLog))
+	require.NoError(t, err)
+	weblog.parser = p
+	return weblog
+}
+
+func prepareWebLogCollectCustomNumericFields(t *testing.T) *WebLog {
+	t.Helper()
+	format := strings.Join([]string{
+		"$numeric1",
+		"$numeric2",
+	}, " ")
+
+	cfg := Config{
+		Parser: logs.ParserConfig{
+			LogType: logs.TypeCSV,
+			CSV: logs.CSVConfig{
+				FieldsPerRecord:  2,
+				Delimiter:        " ",
+				TrimLeadingSpace: false,
+				Format:           format,
+				CheckField:       checkCSVFormatField,
+			},
+		},
+		CustomNumericFields: []customNumericField{
+			{
+				Name:  "numeric1",
+				Units: "bytes",
+			},
+			{
+				Name:  "numeric2",
+				Units: "requests",
+			},
+		},
+		Path:           "testdata/custom_time_fields.log",
+		ExcludePath:    "",
+		URLPatterns:    nil,
+		Histogram:      nil,
+		GroupRespCodes: false,
+	}
+	weblog := New()
+	weblog.Config = cfg
+	require.True(t, weblog.Init())
+	require.True(t, weblog.Check())
+	defer weblog.Cleanup()
+
+	p, err := logs.NewCSVParser(weblog.Parser.CSV, bytes.NewReader(testCustomTimeFieldLog))
+	require.NoError(t, err)
+	weblog.parser = p
+	return weblog
+}
+
+func prepareWebLogCollectIISFields(t *testing.T) *WebLog {
+	t.Helper()
+	format := strings.Join([]string{
+		"-",               // date
+		"-",               // time
+		"$host",           // s-ip
+		"$request_method", // cs-method
+		"$request_uri",    // cs-uri-stem
+		"-",               // cs-uri-query
+		"$server_port",    // s-port
+		"-",               // cs-username
+		"$remote_addr",    // c-ip
+		"-",               // cs(User-Agent)
+		"-",               // cs(Referer)
+		"$status",         // sc-status
+		"-",               // sc-substatus
+		"-",               // sc-win32-status
+		"$request_time",   // time-taken
+	}, " ")
+	cfg := Config{
+		Parser: logs.ParserConfig{
+			LogType: logs.TypeCSV,
+			CSV: logs.CSVConfig{
+				// Users can define number of fields
+				FieldsPerRecord:  -1,
+				Delimiter:        " ",
+				TrimLeadingSpace: false,
+				Format:           format,
+				CheckField:       checkCSVFormatField,
+			},
+		},
+		Path:           "testdata/u_ex221107.log",
+		ExcludePath:    "",
+		URLPatterns:    nil,
+		Histogram:      nil,
+		GroupRespCodes: false,
+	}
+
+	weblog := New()
+	weblog.Config = cfg
+	require.True(t, weblog.Init())
+	require.True(t, weblog.Check())
+	defer weblog.Cleanup()
+
+	p, err := logs.NewCSVParser(weblog.Parser.CSV, bytes.NewReader(testIISLog))
 	require.NoError(t, err)
 	weblog.parser = p
 	return weblog

@@ -13,7 +13,7 @@ const (
 	prioResponseInStatusDuration
 )
 
-var charts = module.Charts{
+var httpCheckCharts = module.Charts{
 	responseTimeChart.Copy(),
 	responseLengthChart.Copy(),
 	responseStatusChart.Copy(),
@@ -55,12 +55,10 @@ var responseStatusChart = module.Chart{
 		{ID: "success"},
 		{ID: "no_connection"},
 		{ID: "timeout"},
+		{ID: "redirect"},
 		{ID: "bad_content"},
 		{ID: "bad_status"},
-		//{ID: "dns_lookup_error", Name: "dns lookup error"},
-		//{ID: "address_parse_error", Name: "address parse error"},
-		//{ID: "redirect_error", Name: "redirect error"},
-		//{ID: "body_read_error", Name: "body read error"},
+		{ID: "bad_header"},
 	},
 }
 

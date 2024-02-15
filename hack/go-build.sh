@@ -24,11 +24,11 @@ PLATFORMS=(
 )
 
 getos() {
-  local IFS=/ && read -ra array <<< "$1" && echo "${array[0]}"
+  local IFS=/ && read -ra array <<<"$1" && echo "${array[0]}"
 }
 
 getarch() {
-  local IFS=/ && read -ra array <<< "$1" && echo "${array[1]}"
+  local IFS=/ && read -ra array <<<"$1" && echo "${array[1]}"
 }
 
 WHICH="$1"
@@ -41,6 +41,19 @@ GOLDFLAGS="$GOLDFLAGS -w -s -X main.version=$VERSION"
 build() {
   echo "Building ${GOOS}/${GOARCH}"
   CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -ldflags "${GOLDFLAGS}" -o "$3" "github.com/netdata/go.d.plugin/cmd/godplugin"
+}
+
+create_config_archives() {
+  mkdir -p bin
+  tar -zcvf "bin/config.tar.gz" -C config .
+  tar -zcvf "bin/go.d.plugin-config-${VERSION}.tar.gz" -C config .
+}
+
+create_vendor_archives() {
+  mkdir -p bin
+  go mod vendor
+  tar -zc --transform "s:^:go.d.plugin-${VERSION#v}/:" -f "bin/vendor.tar.gz" vendor
+  tar -zc --transform "s:^:go.d.plugin-${VERSION#v}/:" -f "bin/go.d.plugin-vendor-${VERSION}.tar.gz" vendor
 }
 
 build_all_platforms() {
@@ -73,7 +86,20 @@ build_current_platform() {
   build "$GOOS" "$GOARCH" bin/godplugin
 }
 
+if [[ "$WHICH" == "configs" ]]; then
+  echo "Creating config archives for version: $VERSION"
+  create_config_archives
+  exit 0
+fi
+
+if [[ "$WHICH" == "vendor" ]]; then
+  echo "Creating vendor archives for version: $VERSION"
+  create_vendor_archives
+  exit 0
+fi
+
 echo "Building binaries for version: $VERSION"
+
 if [[ "$WHICH" == "all" ]]; then
   build_all_platforms
 elif [[ -n "$WHICH" ]]; then

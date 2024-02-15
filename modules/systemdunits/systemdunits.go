@@ -6,6 +6,7 @@
 package systemdunits
 
 import (
+	_ "embed"
 	"time"
 
 	"github.com/netdata/go.d.plugin/agent/module"
@@ -13,11 +14,14 @@ import (
 	"github.com/netdata/go.d.plugin/pkg/web"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("systemdunits", module.Creator{
+		JobConfigSchema: configSchema,
 		Defaults: module.Defaults{
-			Disabled:    true,
-			UpdateEvery: 10, // gathering systemd units is CPU-intensive op
+			UpdateEvery: 10, // gathering systemd units can be a CPU intensive op
 		},
 		Create: func() module.Module { return New() },
 	})

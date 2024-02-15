@@ -3,6 +3,7 @@
 package springboot2
 
 import (
+	_ "embed"
 	"strings"
 	"time"
 
@@ -16,9 +17,13 @@ import (
 	"github.com/netdata/go.d.plugin/agent/module"
 )
 
+//go:embed "config_schema.json"
+var configSchema string
+
 func init() {
 	module.Register("springboot2", module.Creator{
-		Create: func() module.Module { return New() },
+		JobConfigSchema: configSchema,
+		Create:          func() module.Module { return New() },
 	})
 }
 
@@ -94,7 +99,7 @@ func (s *SpringBoot2) Init() bool {
 
 // Check makes check
 func (s *SpringBoot2) Check() bool {
-	rawMetrics, err := s.prom.Scrape()
+	rawMetrics, err := s.prom.ScrapeSeries()
 	if err != nil {
 		s.Warning(err)
 		return false
@@ -111,7 +116,7 @@ func (SpringBoot2) Charts() *Charts {
 
 // Collect collects metrics
 func (s *SpringBoot2) Collect() map[string]int64 {
-	rawMetrics, err := s.prom.Scrape()
+	rawMetrics, err := s.prom.ScrapeSeries()
 	if err != nil {
 		return nil
 	}
@@ -136,7 +141,7 @@ func (s *SpringBoot2) Collect() map[string]int64 {
 	return stm.ToMap(m)
 }
 
-func gatherHeap(rawMetrics prometheus.Metrics, m *heap) {
+func gatherHeap(rawMetrics prometheus.Series, m *heap) {
 	for _, metric := range rawMetrics {
 		id := metric.Labels.Get("id")
 		value := metric.Value
@@ -151,7 +156,7 @@ func gatherHeap(rawMetrics prometheus.Metrics, m *heap) {
 	}
 }
 
-func (s *SpringBoot2) gatherResponse(rawMetrics prometheus.Metrics, m *metrics) {
+func (s *SpringBoot2) gatherResponse(rawMetrics prometheus.Series, m *metrics) {
 	for _, metric := range rawMetrics.FindByName("http_server_requests_seconds_count") {
 		if s.uriFilter != nil {
 			uri := metric.Labels.Get("uri")

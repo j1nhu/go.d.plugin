@@ -3,45 +3,58 @@
 package weblog
 
 import (
-	"github.com/netdata/go.d.plugin/pkg/logs"
+	_ "embed"
 
 	"github.com/netdata/go.d.plugin/agent/module"
+	"github.com/netdata/go.d.plugin/pkg/logs"
 )
 
-func init() {
-	creator := module.Creator{
-		Create: func() module.Module { return New() },
-	}
+//go:embed "config_schema.json"
+var configSchema string
 
-	module.Register("web_log", creator)
+func init() {
+	module.Register("web_log", module.Creator{
+		JobConfigSchema: configSchema,
+		Create:          func() module.Module { return New() },
+	})
 }
 
 func New() *WebLog {
-	cfg := logs.ParserConfig{
-		LogType: typeAuto,
-		CSV: logs.CSVConfig{
-			FieldsPerRecord:  -1,
-			Delimiter:        " ",
-			TrimLeadingSpace: false,
-			CheckField:       checkCSVFormatField,
-		},
-		LTSV: logs.LTSVConfig{
-			FieldDelimiter: "\t",
-			ValueDelimiter: ":",
-		},
-		RegExp: logs.RegExpConfig{},
-		JSON:   logs.JSONConfig{},
-	}
 	return &WebLog{
 		Config: Config{
 			ExcludePath:    "*.gz",
 			GroupRespCodes: true,
-			Parser:         cfg,
+			Parser: logs.ParserConfig{
+				LogType: typeAuto,
+				CSV: logs.CSVConfig{
+					FieldsPerRecord:  -1,
+					Delimiter:        " ",
+					TrimLeadingSpace: false,
+					CheckField:       checkCSVFormatField,
+				},
+				LTSV: logs.LTSVConfig{
+					FieldDelimiter: "\t",
+					ValueDelimiter: ":",
+				},
+				RegExp: logs.RegExpConfig{},
+				JSON:   logs.JSONConfig{},
+			},
 		},
 	}
 }
 
 type (
+	Config struct {
+		Parser              logs.ParserConfig    `yaml:",inline"`
+		Path                string               `yaml:"path"`
+		ExcludePath         string               `yaml:"exclude_path"`
+		URLPatterns         []userPattern        `yaml:"url_patterns"`
+		CustomFields        []customField        `yaml:"custom_fields"`
+		CustomTimeFields    []customTimeField    `yaml:"custom_time_fields"`
+		CustomNumericFields []customNumericField `yaml:"custom_numeric_fields"`
+		Histogram           []float64            `yaml:"histogram"`
+		GroupRespCodes      bool                 `yaml:"group_response_codes"`
+	}
 	userPattern struct {
 		Name  string `yaml:"name"`
 		Match string `yaml:"match"`
@@ -54,52 +67,54 @@ type (
 		Name      string    `yaml:"name"`
 		Histogram []float64 `yaml:"histogram"`
 	}
-
-	Config struct {
-		Parser           logs.ParserConfig `yaml:",inline"`
-		Path             string            `yaml:"path"`
-		ExcludePath      string            `yaml:"exclude_path"`
-		URLPatterns      []userPattern     `yaml:"url_patterns"`
-		CustomFields     []customField     `yaml:"custom_fields"`
-		CustomTimeFields []customTimeField `yaml:"custom_time_fields"`
-		Histogram        []float64         `yaml:"histogram"`
-		GroupRespCodes   bool              `yaml:"group_response_codes"`
-	}
-
-	WebLog struct {
-		module.Base
-		Config `yaml:",inline"`
-
-		file             *logs.Reader
-		parser           logs.Parser
-		line             *logLine
-		urlPatterns      []*pattern
-		customFields     map[string][]*pattern
-		customTimeFields map[string][]float64
-
-		mx     *metricsData
-		charts *module.Charts
+	customNumericField struct {
+		Name       string `yaml:"name"`
+		Units      string `yaml:"units"`
+		Multiplier int    `yaml:"multiplier"`
+		Divisor    int    `yaml:"divisor"`
 	}
 )
 
+type WebLog struct {
+	module.Base
+	Config `yaml:",inline"`
+
+	file        *logs.Reader
+	parser      logs.Parser
+	line        *logLine
+	urlPatterns []*pattern
+
+	customFields        map[string][]*pattern
+	customTimeFields    map[string][]float64
+	customNumericFields map[string]bool
+
+	charts *module.Charts
+	mx     *metricsData
+}
+
 func (w *WebLog) Init() bool {
 	if err := w.createURLPatterns(); err != nil {
-		w.Error("init failed: ", err)
+		w.Errorf("init failed: %v", err)
 		return false
 	}
 
 	if err := w.createCustomFields(); err != nil {
-		w.Error("init failed: ", err)
+		w.Errorf("init failed: %v", err)
 		return false
 	}
 
 	if err := w.createCustomTimeFields(); err != nil {
-		w.Error("init failed: ", err)
+		w.Errorf("init failed: %v", err)
 		return false
+	}
+
+	if err := w.createCustomNumericFields(); err != nil {
+		w.Errorf("init failed: %v", err)
 	}
 
 	w.createLogLine()
 	w.mx = newMetricsData(w.Config)
+
 	return true
 }
 
